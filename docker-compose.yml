@@ -49,7 +49,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      URL: http://app:8000/docs/api.json
+      URL: http://localhost:8000/docs/api.json
     depends_on:
       - app
 
