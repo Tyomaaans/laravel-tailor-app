@@ -98,23 +98,22 @@ class AuthController extends Controller
     private function respondWithCookies(array $tokens, string $message): JsonResponse
     {
         $isProduction = app()->environment('production');
-        $accessTtl    = (int) config('jwt.ttl');           // menit
-        $refreshTtl   = (int) config('jwt.refresh_ttl');   // menit
+        $accessTtl    = (int) config('jwt.ttl');         // menit
+        $refreshTtl   = (int) config('jwt.refresh_ttl'); // menit
+
+        // Hitung waktu expired dalam Unix timestamp (milliseconds untuk JS)
+        $expiresAt = (now()->addMinutes($accessTtl)->timestamp) * 1000;
 
         return ApiResponse::success(null, $message)
-            ->cookie(
-                'access_token', $tokens['access_token'],
-                $accessTtl, '/', null,
-                $isProduction, // secure: true di production (HTTPS)
-                true,          // httpOnly
-                false, 'Strict'
+            ->cookie('access_token', $tokens['access_token'],
+                $accessTtl, '/', null, $isProduction, true, false, 'Strict'
             )
-            ->cookie(
-                'refresh_token', $tokens['refresh_token'],
-                $refreshTtl, '/', null,
-                $isProduction,
-                true,
-                false, 'Strict'
+            ->cookie('refresh_token', $tokens['refresh_token'],
+                $refreshTtl, '/', null, $isProduction, true, false, 'Strict'
+            )
+            // Cookie ini bisa dibaca JS (httpOnly: false) — hanya menyimpan waktu, bukan token
+            ->cookie('access_token_exp', $expiresAt,
+                $accessTtl, '/', null, $isProduction, false, false, 'Strict'
             );
     }
 }
