@@ -27,12 +27,11 @@ class AuthController extends Controller
 
             $tokens = $this->authService->login($credentials);
 
-            return ApiResponse::success($tokens, 'Login successfully');
+            return $this->respondWithCookies($tokens, 'Login successfully');
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
             Log::error('Login failed', ['exception' => $exception]);
-
             return ApiResponse::error('Unable to login.', null, 500);
         }
     }
@@ -40,18 +39,20 @@ class AuthController extends Controller
     public function refresh(Request $request): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'refresh_token' => ['required', 'string'],
-            ]);
+            // Ambil refresh_token dari cookie, bukan dari body
+            $refreshToken = $request->cookie('refresh_token');
 
-            $tokens = $this->authService->refresh($validated['refresh_token']);
+            if (! $refreshToken) {
+                return ApiResponse::error('Refresh token missing.', null, 401);
+            }
 
-            return ApiResponse::success($tokens, 'Token refreshed successfully');
+            $tokens = $this->authService->refresh($refreshToken);
+
+            return $this->respondWithCookies($tokens, 'Token refreshed successfully');
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
             Log::error('Token refresh failed', ['exception' => $exception]);
-
             return ApiResponse::error('Unable to refresh token.', null, 500);
         }
     }
@@ -59,24 +60,22 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'refresh_token' => ['required', 'string'],
-            ]);
-
-            $accessToken = $request->bearerToken();
+            $accessToken  = $request->cookie('access_token');
+            $refreshToken = $request->cookie('refresh_token');
 
             if (! $accessToken) {
                 return ApiResponse::error('Access token is required.', null, 401);
             }
 
-            $this->authService->logout($accessToken, $validated['refresh_token']);
+            $this->authService->logout($accessToken, $refreshToken ?? '');
 
-            return ApiResponse::success(null, 'Logged out successfully');
+            return ApiResponse::success(null, 'Logged out successfully')
+                ->withoutCookie('access_token')
+                ->withoutCookie('refresh_token');
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
             Log::error('Logout failed', ['exception' => $exception]);
-
             return ApiResponse::error('Unable to logout.', null, 500);
         }
     }
@@ -92,5 +91,30 @@ class AuthController extends Controller
 
             return ApiResponse::error('Unable to retrieve authenticated user.', null, 500);
         }
+    }
+
+    // Helpers Cookie
+
+    private function respondWithCookies(array $tokens, string $message): JsonResponse
+    {
+        $isProduction = app()->environment('production');
+        $accessTtl    = (int) config('jwt.ttl');           // menit
+        $refreshTtl   = (int) config('jwt.refresh_ttl');   // menit
+
+        return ApiResponse::success(null, $message)
+            ->cookie(
+                'access_token', $tokens['access_token'],
+                $accessTtl, '/', null,
+                $isProduction, // secure: true di production (HTTPS)
+                true,          // httpOnly
+                false, 'Strict'
+            )
+            ->cookie(
+                'refresh_token', $tokens['refresh_token'],
+                $refreshTtl, '/', null,
+                $isProduction,
+                true,
+                false, 'Strict'
+            );
     }
 }
