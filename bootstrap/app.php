@@ -33,7 +33,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
         $middleware->statefulApi();
-        $middleware->prependToGroup('api', \App\Http\Middleware\JwtFromCookie::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

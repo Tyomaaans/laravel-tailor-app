@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Http\Responses\ApiResponse;
 use App\Services\AuthService;
+use App\Http\Middleware;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -39,7 +40,7 @@ class AuthController extends Controller
     public function refresh(Request $request): JsonResponse
     {
         try {
-            // Ambil refresh_token dari cookie, bukan dari body
+            // Ambil dari cookie, bukan body
             $refreshToken = $request->cookie('refresh_token');
 
             if (! $refreshToken) {
@@ -60,7 +61,7 @@ class AuthController extends Controller
     public function logout(Request $request): JsonResponse
     {
         try {
-            $accessToken  = $request->cookie('access_token');
+            $accessToken = $request->bearerToken();
             $refreshToken = $request->cookie('refresh_token');
 
             if (! $accessToken) {
@@ -70,7 +71,6 @@ class AuthController extends Controller
             $this->authService->logout($accessToken, $refreshToken ?? '');
 
             return ApiResponse::success(null, 'Logged out successfully')
-                ->withoutCookie('access_token')
                 ->withoutCookie('refresh_token');
         } catch (ValidationException $exception) {
             throw $exception;
@@ -98,22 +98,23 @@ class AuthController extends Controller
     private function respondWithCookies(array $tokens, string $message): JsonResponse
     {
         $isProduction = app()->environment('production');
-        $accessTtl    = (int) config('jwt.ttl');         // menit
-        $refreshTtl   = (int) config('jwt.refresh_ttl'); // menit
+        $refreshTtl = (int) config('jwt.refresh_ttl');
 
-        // Hitung waktu expired dalam Unix timestamp (milliseconds untuk JS)
-        $expiresAt = (now()->addMinutes($accessTtl)->timestamp) * 1000;
-
-        return ApiResponse::success(null, $message)
-            ->cookie('access_token', $tokens['access_token'],
-                $accessTtl, '/', null, $isProduction, true, false, 'Strict'
-            )
-            ->cookie('refresh_token', $tokens['refresh_token'],
-                $refreshTtl, '/', null, $isProduction, true, false, 'Strict'
-            )
-            // Cookie ini bisa dibaca JS (httpOnly: false) — hanya menyimpan waktu, bukan token
-            ->cookie('access_token_exp', $expiresAt,
-                $accessTtl, '/', null, $isProduction, false, false, 'Strict'
-            );
+        return ApiResponse::success([
+            'access_token' => $tokens['access_token'],
+            'token_type'   => $tokens['token_type'],
+            'expires_in'   => $tokens['expires_in'],
+        ], $message)
+        ->cookie(
+            'refresh_token',
+            $tokens['refresh_token'],
+            $refreshTtl,
+            '/',
+            null,
+            $isProduction,
+            true,
+            false,
+            'Strict'
+        );
     }
 }
